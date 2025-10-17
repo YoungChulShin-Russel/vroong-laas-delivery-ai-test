@@ -2,3 +2,4 @@ rootProject.name = 'delivery'
 
 include 'core'
 include 'api'
+include 'infrastructure'

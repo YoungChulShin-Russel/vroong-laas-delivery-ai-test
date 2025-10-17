@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
     scanBasePackages = {
         "vroong.laas.delivery.api",
         "vroong.laas.delivery.core",
+        "vroong.laas.delivery.infrastructure",
     }
 )
 public class ApiApplication {

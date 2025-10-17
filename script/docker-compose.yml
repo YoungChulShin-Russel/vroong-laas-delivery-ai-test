@@ -1,8 +1,8 @@
-name: dispatch-local
+name: delivery-local
 
 services:
   mysql:
-    container_name: dispatch-mysql
+    container_name: delivery-mysql
     image: mysql/mysql-server:8.0.27
     restart: unless-stopped
     ports:
