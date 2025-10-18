@@ -2,73 +2,108 @@ package vroong.laas.delivery.core.domain.delivery.routing;
 
 import vroong.laas.delivery.core.domain.delivery.DeliveryStatus;
 import vroong.laas.delivery.core.domain.delivery.step.*;
+import vroong.laas.delivery.core.domain.routing.RoutingTemplate;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * 배송 라우팅 팩토리
  *
- * <p>API를 통해 동적으로 배송 라우팅을 생성합니다.
+ * <p>템플릿 기반으로 개별 배송용 라우팅을 생성합니다.
  */
 public class DeliveryRoutingFactory {
     
     /**
-     * 라우팅 생성 요청 DTO
+     * 템플릿 생성 요청 DTO
      */
-    public record CreateRoutingRequest(
-        String routingName,
+    public record CreateTemplateRequest(
+        String deliveryTypeCode,
+        String templateName,
         List<DeliveryStatus> statusSequence
     ) {}
     
     /**
-     * API로 라우팅 생성
-     * 
-     * @param request 라우팅 생성 요청
-     * @return 생성된 라우팅
+     * 템플릿 생성 요청 DTO (단계별 필수 여부 포함)
      */
-    public static DeliveryRouting createRouting(CreateRoutingRequest request) {
-        List<DeliveryStep> steps = createStepsFromStatusSequence(request.statusSequence());
-        return new DeliveryRouting(request.routingName(), steps);
-    }
-    
-    /**
-     * 라우팅 생성 요청 DTO (단계별 필수 여부 포함)
-     */
-    public record CreateRoutingWithRequirementsRequest(
-        String routingName,
+    public record CreateTemplateWithRequirementsRequest(
+        String deliveryTypeCode,
+        String templateName,
         List<DeliveryStatus> statusSequence,
-        Map<DeliveryStatus, Boolean> stepRequirements  // 각 상태별 필수 여부
+        Map<DeliveryStatus, Boolean> stepRequirements
     ) {}
     
     /**
-     * 단계별 필수 여부를 포함한 라우팅 생성
+     * 템플릿 생성
+     * 
+     * @param request 템플릿 생성 요청
+     * @return 생성된 템플릿
      */
-    public static DeliveryRouting createRoutingWithRequirements(CreateRoutingWithRequirementsRequest request) {
-        List<DeliveryStep> steps = createStepsFromStatusSequence(request.statusSequence());
-        Map<DeliveryStep, Boolean> stepRequirements = createStepRequirementsMap(steps, request.stepRequirements());
-        
-        return new DeliveryRouting(request.routingName(), steps, stepRequirements);
+    public static RoutingTemplate createTemplate(CreateTemplateRequest request) {
+        return new RoutingTemplate(
+            request.deliveryTypeCode(),
+            request.templateName(),
+            request.statusSequence()
+        );
     }
     
     /**
-     * 단계별 필수 여부 맵 생성
+     * 템플릿 생성 (단계별 필수 여부 포함)
+     * 
+     * @param request 템플릿 생성 요청
+     * @return 생성된 템플릿
      */
-    private static Map<DeliveryStep, Boolean> createStepRequirementsMap(
+    public static RoutingTemplate createTemplateWithRequirements(CreateTemplateWithRequirementsRequest request) {
+        return new RoutingTemplate(
+            request.deliveryTypeCode(),
+            request.templateName(),
+            request.statusSequence()
+        );
+    }
+    
+    /**
+     * 개별 배송용 라우팅 생성
+     * 
+     * @param template 템플릿
+     * @param deliveryId 배송 ID
+     * @return 개별 배송용 라우팅
+     */
+    public static DeliveryRouting createRoutingForDelivery(RoutingTemplate template, Long deliveryId) {
+        // RoutingTemplate의 statusSequence를 기반으로 DeliveryRoutingStep 생성
+        List<DeliveryStep> steps = createStepsFromStatusSequence(template.getStatusSequence());
+        List<DeliveryRoutingStep> routingSteps = createDefaultRoutingSteps(steps);
+        
+        return new DeliveryRouting(
+            deliveryId,
+            template.getDeliveryTypeCode(),
+            template.getTemplateName(),
+            routingSteps
+        );
+    }
+    
+    /**
+     * 기본 라우팅 단계 생성 (모든 단계 필수)
+     */
+    private static List<DeliveryRoutingStep> createDefaultRoutingSteps(List<DeliveryStep> steps) {
+        return steps.stream()
+            .map(step -> new DeliveryRoutingStep(step, true))
+            .toList();
+    }
+    
+    /**
+     * 상태별 필수 여부 맵을 라우팅 단계로 변환
+     */
+    private static List<DeliveryRoutingStep> createRoutingStepsFromStatusMap(
         List<DeliveryStep> steps, 
         Map<DeliveryStatus, Boolean> statusRequirements
     ) {
-        Map<DeliveryStep, Boolean> stepRequirements = new HashMap<>();
-        
-        for (DeliveryStep step : steps) {
-            // 상태별 필수 여부가 설정되어 있으면 사용, 없으면 기본값(true)
-            boolean isRequired = statusRequirements.getOrDefault(step.getStatus(), true);
-            stepRequirements.put(step, isRequired);
-        }
-        
-        return stepRequirements;
+        return steps.stream()
+            .map(step -> {
+                boolean isRequired = statusRequirements.getOrDefault(step.getStatus(), true);
+                return new DeliveryRoutingStep(step, isRequired);
+            })
+            .toList();
     }
     
     /**
@@ -92,8 +127,7 @@ public class DeliveryRoutingFactory {
      */
     public static class DeliveryRoutingBuilder {
         private final String deliveryTypeCode;
-        private final List<DeliveryStep> steps = new ArrayList<>();
-        private final Map<DeliveryStep, Boolean> stepRequirements = new HashMap<>();
+        private final List<DeliveryRoutingStep> routingSteps = new ArrayList<>();
         
         public DeliveryRoutingBuilder(String deliveryTypeCode) {
             this.deliveryTypeCode = deliveryTypeCode;
@@ -110,8 +144,7 @@ public class DeliveryRoutingFactory {
          * 단계 추가 (필수 여부 지정)
          */
         public DeliveryRoutingBuilder addStep(DeliveryStep step, boolean required) {
-            steps.add(step);
-            stepRequirements.put(step, required);
+            routingSteps.add(new DeliveryRoutingStep(step, required));
             return this;
         }
         
@@ -134,10 +167,10 @@ public class DeliveryRoutingFactory {
         }
         
         /**
-         * 라우팅 빌드
+         * 라우팅 빌드 (개별 배송용)
          */
-        public DeliveryRouting build() {
-            return new DeliveryRouting(deliveryTypeCode, steps, stepRequirements);
+        public DeliveryRouting build(Long deliveryId) {
+            return new DeliveryRouting(deliveryId, deliveryTypeCode, "CUSTOM", routingSteps);
         }
     }
     

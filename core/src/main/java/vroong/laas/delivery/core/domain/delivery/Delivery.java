@@ -5,13 +5,11 @@ import lombok.ToString;
 import vroong.laas.delivery.core.domain.shared.AggregateRoot;
 import vroong.laas.delivery.core.domain.delivery.event.DeliveryCreatedEvent;
 import vroong.laas.delivery.core.domain.delivery.event.DeliveryStatusChangedEvent;
+import vroong.laas.delivery.core.domain.delivery.routing.DeliveryRouting;
 import vroong.laas.delivery.core.domain.delivery.step.DeliveryStep;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 
 /**
  * 배송 Aggregate Root
@@ -35,13 +33,13 @@ public class Delivery extends AggregateRoot {
     private DeliveryStatus status;
     private final DeliverySafePhoneNumber safePhoneNumber;
     private final DeliveryPolicy policy;
-    private final List<DeliveryStatusHistory> statusHistories;
-    private final List<DeliveryPhoto> photos;
     private final Instant createdAt;
     private final Instant updatedAt;
     
     // 배송 단계 관련 필드
     private final String deliveryTypeCode;
+    private final DeliveryRouting routing;
+    private DeliveryStep prevStep;
     private DeliveryStep currentStep;
     private DeliveryStep nextStep;
 
@@ -56,11 +54,11 @@ public class Delivery extends AggregateRoot {
         DeliveryStatus status,
         DeliverySafePhoneNumber safePhoneNumber,
         DeliveryPolicy policy,
-        List<DeliveryStatusHistory> statusHistories,
-        List<DeliveryPhoto> photos,
         Instant createdAt,
         Instant updatedAt,
         String deliveryTypeCode,
+        DeliveryRouting routing,
+        DeliveryStep prevStep,
         DeliveryStep currentStep,
         DeliveryStep nextStep
     ) {
@@ -105,11 +103,11 @@ public class Delivery extends AggregateRoot {
         this.status = status;
         this.safePhoneNumber = safePhoneNumber;
         this.policy = policy;
-        this.statusHistories = statusHistories != null ? new ArrayList<>(statusHistories) : new ArrayList<>();
-        this.photos = photos != null ? new ArrayList<>(photos) : new ArrayList<>();
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
         this.deliveryTypeCode = deliveryTypeCode;
+        this.routing = routing;
+        this.prevStep = prevStep;
         this.currentStep = currentStep;
         this.nextStep = nextStep;
     }
@@ -127,7 +125,8 @@ public class Delivery extends AggregateRoot {
         Long agentId,
         BigDecimal deliveryFee,
         DeliverySafePhoneNumber safePhoneNumber,
-        DeliveryPolicy policy
+        DeliveryPolicy policy,
+        DeliveryRouting routing
     ) {
         Instant now = Instant.now();
         
@@ -141,15 +140,15 @@ public class Delivery extends AggregateRoot {
             DeliveryStatus.STARTED,
             safePhoneNumber,
             policy,
-            new ArrayList<>(),
-            new ArrayList<>(),
             now,
-            now
+            now,
+            routing.getDeliveryTypeCode(),
+            routing,
+            null, // prevStep
+            null, // currentStep
+            null  // nextStep
         );
 
-        // 초기 상태 이력 추가
-        delivery.addStatusHistory(DeliveryStatus.STARTED, "배송 시작", now);
-        
         // 도메인 이벤트 추가
         delivery.addDomainEvent(DeliveryCreatedEvent.from(delivery));
 
@@ -209,25 +208,10 @@ public class Delivery extends AggregateRoot {
             return;
         }
 
-        addStatusHistory(newStatus, reason, Instant.now());
+        this.status = newStatus;
         
         // 도메인 이벤트 추가
         addDomainEvent(DeliveryStatusChangedEvent.from(this, newStatus, reason));
-    }
-
-    /**
-     * 상태 이력 추가
-     */
-    private void addStatusHistory(DeliveryStatus status, String reason, Instant changedAt) {
-        DeliveryStatusHistory history = new DeliveryStatusHistory(
-            null, // ID는 저장 시 할당
-            this.id,
-            status,
-            "PROGRESS",
-            reason,
-            changedAt
-        );
-        this.statusHistories.add(history);
     }
 
     /**
@@ -242,6 +226,20 @@ public class Delivery extends AggregateRoot {
      */
     public void setStatus(DeliveryStatus status) {
         this.status = status;
+    }
+    
+    /**
+     * 라우팅 조회
+     */
+    public DeliveryRouting getRouting() {
+        return routing;
+    }
+    
+    /**
+     * 이전 단계 조회
+     */
+    public DeliveryStep getPrevStep() {
+        return prevStep;
     }
     
     /**
@@ -263,10 +261,11 @@ public class Delivery extends AggregateRoot {
      */
     public void moveToNextStep() {
         if (nextStep != null) {
-            nextStep.validate(this);
-            nextStep.execute(this);
+            nextStep.validate(this, routing);
+            nextStep.execute(this, routing);
+            this.prevStep = currentStep;
             this.currentStep = nextStep;
-            this.nextStep = currentStep.getNextStep();
+            this.nextStep = currentStep.getNextStep(routing);
         }
     }
     
@@ -274,7 +273,25 @@ public class Delivery extends AggregateRoot {
      * 다음 단계로 이동 가능한지 확인
      */
     public boolean canMoveToNext() {
-        return nextStep != null && nextStep.canTransition(this);
+        return nextStep != null && nextStep.canTransition(this, routing);
+    }
+    
+    /**
+     * 이전 단계로 되돌리기
+     */
+    public void moveToPrevStep() {
+        if (prevStep != null) {
+            this.nextStep = currentStep;
+            this.currentStep = prevStep;
+            this.prevStep = routing.getPreviousStep(prevStep);
+        }
+    }
+    
+    /**
+     * 이전 단계로 되돌리기 가능한지 확인
+     */
+    public boolean canMoveToPrev() {
+        return prevStep != null;
     }
     
     /**

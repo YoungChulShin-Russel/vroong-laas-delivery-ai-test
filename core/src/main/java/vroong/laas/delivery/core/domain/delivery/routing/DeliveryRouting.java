@@ -3,52 +3,68 @@ package vroong.laas.delivery.core.domain.delivery.routing;
 import vroong.laas.delivery.core.domain.delivery.DeliveryStatus;
 import vroong.laas.delivery.core.domain.delivery.step.DeliveryStep;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
- * 배송 라우팅 정보
+ * 개별 배송용 라우팅 인스턴스
  *
- * <p>배송 타입별 단계 정의와 상태 전이를 관리합니다.
+ * <p>특정 배송의 단계 정의와 상태 전이를 관리합니다.
+ * DeliveryRoutingTemplate을 기반으로 생성됩니다.
  */
 public class DeliveryRouting {
     
+    private final Long deliveryId;
     private final String deliveryTypeCode;
-    private final List<DeliveryStep> steps;
-    private final Map<DeliveryStep, Boolean> stepRequiredMap;
+    private final String templateName;
+    private final List<DeliveryRoutingStep> routingSteps;
     
-    public DeliveryRouting(String deliveryTypeCode, List<DeliveryStep> steps) {
+    /**
+     * 개별 배송용 라우팅 생성
+     */
+    public DeliveryRouting(
+        Long deliveryId,
+        String deliveryTypeCode,
+        String templateName,
+        List<DeliveryRoutingStep> routingSteps
+    ) {
+        this.deliveryId = deliveryId;
         this.deliveryTypeCode = deliveryTypeCode;
-        this.steps = steps;
-        this.stepRequiredMap = createStepRequiredMap(steps);
+        this.templateName = templateName;
+        this.routingSteps = routingSteps;
+    }
+    
+    // Getters
+    public Long getDeliveryId() {
+        return deliveryId;
+    }
+    
+    public String getDeliveryTypeCode() {
+        return deliveryTypeCode;
+    }
+    
+    public String getTemplateName() {
+        return templateName;
+    }
+    
+    public List<DeliveryRoutingStep> getRoutingSteps() {
+        return routingSteps;
     }
     
     /**
-     * 단계별 필수 여부를 포함한 라우팅 생성
+     * 단계 목록 조회 (하위 호환성)
      */
-    public DeliveryRouting(String deliveryTypeCode, List<DeliveryStep> steps, Map<DeliveryStep, Boolean> stepRequirements) {
-        this.deliveryTypeCode = deliveryTypeCode;
-        this.steps = steps;
-        this.stepRequiredMap = new HashMap<>(stepRequirements);
-    }
-    
-    /**
-     * 단계별 필수 여부 맵 생성 (기본값: 모든 단계 필수)
-     */
-    private Map<DeliveryStep, Boolean> createStepRequiredMap(List<DeliveryStep> steps) {
-        Map<DeliveryStep, Boolean> map = new HashMap<>();
-        for (DeliveryStep step : steps) {
-            map.put(step, true); // 기본값: 모든 단계 필수
-        }
-        return map;
+    public List<DeliveryStep> getSteps() {
+        return routingSteps.stream()
+            .map(DeliveryRoutingStep::getStep)
+            .toList();
     }
     
     /**
      * 상태에 해당하는 단계 조회
      */
     public DeliveryStep getStep(DeliveryStatus status) {
-        return steps.stream()
+        return routingSteps.stream()
+            .map(DeliveryRoutingStep::getStep)
             .filter(step -> step.getStatus() == status)
             .findFirst()
             .orElse(null);
@@ -119,13 +135,15 @@ public class DeliveryRouting {
      * 특정 단계가 라우팅에 포함되어 있는지 확인
      */
     public boolean containsStep(DeliveryStep step) {
-        return steps.contains(step);
+        return routingSteps.stream()
+            .anyMatch(routingStep -> routingStep.getStep().equals(step));
     }
     
     /**
      * 특정 단계의 이전 단계 조회
      */
     public DeliveryStep getPreviousStep(DeliveryStep currentStep) {
+        List<DeliveryStep> steps = getSteps();
         int currentIndex = steps.indexOf(currentStep);
         if (currentIndex <= 0) {
             return null; // 첫 번째 단계이거나 단계를 찾을 수 없음
@@ -137,6 +155,7 @@ public class DeliveryRouting {
      * 특정 단계의 다음 단계 조회
      */
     public DeliveryStep getNextStep(DeliveryStep currentStep) {
+        List<DeliveryStep> steps = getSteps();
         int currentIndex = steps.indexOf(currentStep);
         if (currentIndex < 0 || currentIndex >= steps.size() - 1) {
             return null; // 마지막 단계이거나 단계를 찾을 수 없음
@@ -144,41 +163,36 @@ public class DeliveryRouting {
         return steps.get(currentIndex + 1);
     }
     
-    /**
-     * 배송 타입 코드 조회
-     */
-    public String getDeliveryTypeCode() {
-        return deliveryTypeCode;
-    }
-    
-    /**
-     * 모든 단계 조회
-     */
-    public List<DeliveryStep> getSteps() {
-        return steps;
-    }
     
     /**
      * 특정 단계가 필수인지 확인
      */
     public boolean isStepRequired(DeliveryStep step) {
-        return stepRequiredMap.getOrDefault(step, false);
+        return routingSteps.stream()
+            .filter(routingStep -> routingStep.getStep().equals(step))
+            .findFirst()
+            .map(DeliveryRoutingStep::isRequired)
+            .orElse(false);
     }
     
     /**
      * 특정 상태의 단계가 필수인지 확인
      */
     public boolean isStepRequired(DeliveryStatus status) {
-        DeliveryStep step = getStep(status);
-        return step != null && isStepRequired(step);
+        return routingSteps.stream()
+            .filter(routingStep -> routingStep.getStep().getStatus() == status)
+            .findFirst()
+            .map(DeliveryRoutingStep::isRequired)
+            .orElse(false);
     }
     
     /**
      * 필수 단계들만 조회
      */
     public List<DeliveryStep> getRequiredSteps() {
-        return steps.stream()
-            .filter(this::isStepRequired)
+        return routingSteps.stream()
+            .filter(DeliveryRoutingStep::isRequired)
+            .map(DeliveryRoutingStep::getStep)
             .toList();
     }
     
@@ -186,8 +200,9 @@ public class DeliveryRouting {
      * 선택적 단계들만 조회
      */
     public List<DeliveryStep> getOptionalSteps() {
-        return steps.stream()
-            .filter(step -> !isStepRequired(step))
+        return routingSteps.stream()
+            .filter(DeliveryRoutingStep::isOptional)
+            .map(DeliveryRoutingStep::getStep)
             .toList();
     }
     
@@ -198,21 +213,6 @@ public class DeliveryRouting {
         return !isStepRequired(step);
     }
     
-    /**
-     * 특정 단계를 필수로 설정
-     */
-    public void setStepRequired(DeliveryStep step, boolean required) {
-        stepRequiredMap.put(step, required);
-    }
-    
-    /**
-     * 특정 상태의 단계를 필수로 설정
-     */
-    public void setStepRequired(DeliveryStatus status, boolean required) {
-        DeliveryStep step = getStep(status);
-        if (step != null) {
-            setStepRequired(step, required);
-        }
-    }
+    // 개별 배송용 라우팅은 수정할 수 없음 (템플릿에서 생성된 불변 객체)
     
 }

@@ -66,8 +66,8 @@ public class DeliveryCreatedEvent implements DomainEvent {
             delivery.getDeliveryFee(),
             delivery.getStatus().name(),
             delivery.getSafePhoneNumber().getSafePhoneNumber(),
-            delivery.isAlcoholDelivery(),
-            delivery.isContactlessDelivery(),
+            delivery.getPolicy().isAlcoholDelivery(),
+            delivery.getPolicy().isContactlessDelivery(),
             delivery.getPolicy().getPickupRequestTime(),
             Instant.now()
         );
