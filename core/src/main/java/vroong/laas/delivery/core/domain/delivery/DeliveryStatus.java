@@ -1,5 +1,7 @@
 package vroong.laas.delivery.core.domain.delivery;
 
+import lombok.Getter;
+
 /**
  * 배송 상태 Enum
  *
@@ -9,54 +11,32 @@ package vroong.laas.delivery.core.domain.delivery;
  * - 정상 진행: STARTED → ARRIVED → PICKED_UP → COMPLETED
  * - 취소: STARTED → CANCELLED, ARRIVED → CANCELLED
  */
+@Getter
 public enum DeliveryStatus {
     
     /** 배송 시작 */
-    STARTED("배송 시작"),
-    
+    STARTED("배송 시작", true),
+
     /** 상점 도착 */
-    ARRIVED("상점 도착"),
+    PICKUP_ARRIVED("상점 도착", false),
     
     /** 픽업 완료 */
-    PICKED_UP("픽업 완료"),
+    PICKED_UP("픽업 완료", true),
     
     /** 사진 업로드 */
-    PHOTO_UPLOAD("사진 업로드"),
+    PHOTO_UPLOAD("배송 사진 업로드", false),
     
     /** 배송 완료 */
-    COMPLETED("배송 완료"),
+    DELIVERED("배송 완료", true),
     
     /** 배송 취소 */
-    CANCELLED("배송 취소");
+    CANCELLED("배송 취소", true);
 
     private final String description;
+    private final boolean required;
 
-    DeliveryStatus(String description) {
+    DeliveryStatus(String description, boolean required) {
         this.description = description;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    /**
-     * 취소 가능한 상태인지 확인
-     */
-    public boolean isCancellable() {
-        return this == STARTED || this == ARRIVED;
-    }
-
-    /**
-     * 완료된 상태인지 확인
-     */
-    public boolean isCompleted() {
-        return this == COMPLETED;
-    }
-
-    /**
-     * 취소된 상태인지 확인
-     */
-    public boolean isCancelled() {
-        return this == CANCELLED;
+        this.required = required;
     }
 }

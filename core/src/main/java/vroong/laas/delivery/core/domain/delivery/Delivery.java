@@ -3,10 +3,6 @@ package vroong.laas.delivery.core.domain.delivery;
 import lombok.Getter;
 import lombok.ToString;
 import vroong.laas.delivery.core.domain.shared.AggregateRoot;
-import vroong.laas.delivery.core.domain.delivery.event.DeliveryCreatedEvent;
-import vroong.laas.delivery.core.domain.delivery.event.DeliveryStatusChangedEvent;
-import vroong.laas.delivery.core.domain.delivery.routing.DeliveryRouting;
-import vroong.laas.delivery.core.domain.delivery.step.DeliveryStep;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -22,28 +18,16 @@ import java.time.Instant;
  */
 @Getter
 @ToString
-public class Delivery extends AggregateRoot {
+public class Delivery {
 
-    private final Long id;
-    private final DeliveryNumber deliveryNumber;
-    private final Long orderId;
-    private final Long dispatchId;
-    private final Long agentId;
-    private final BigDecimal deliveryFee;
+    private Long id;
+    private DeliveryNumber deliveryNumber;
+    private Long orderId;
+    private Long dispatchId;
+    private Long agentId;
+    private BigDecimal deliveryFee;
     private DeliveryStatus status;
-    private final DeliverySafePhoneNumber safePhoneNumber;
-    private final DeliveryPolicy policy;
-    private final Instant createdAt;
-    private final Instant updatedAt;
-    
-    // 배송 단계 관련 필드
-    private final String deliveryTypeCode;
-    private final DeliveryRouting routing;
-    private DeliveryStep prevStep;
-    private DeliveryStep currentStep;
-    private DeliveryStep nextStep;
 
-    // 생성자 - 필수 값 검증
     public Delivery(
         Long id,
         DeliveryNumber deliveryNumber,
@@ -51,17 +35,8 @@ public class Delivery extends AggregateRoot {
         Long dispatchId,
         Long agentId,
         BigDecimal deliveryFee,
-        DeliveryStatus status,
-        DeliverySafePhoneNumber safePhoneNumber,
         DeliveryPolicy policy,
-        Instant createdAt,
-        Instant updatedAt,
-        String deliveryTypeCode,
-        DeliveryRouting routing,
-        DeliveryStep prevStep,
-        DeliveryStep currentStep,
-        DeliveryStep nextStep
-    ) {
+        DeliveryStatus status) {
         // 필수 값 검증
         if (id == null) {
             throw new IllegalArgumentException("ID는 필수입니다");
@@ -84,14 +59,8 @@ public class Delivery extends AggregateRoot {
         if (status == null) {
             throw new IllegalArgumentException("배송 상태는 필수입니다");
         }
-        if (safePhoneNumber == null) {
-            throw new IllegalArgumentException("안심번호는 필수입니다");
-        }
         if (policy == null) {
             throw new IllegalArgumentException("배송 정책은 필수입니다");
-        }
-        if (createdAt == null) {
-            throw new IllegalArgumentException("생성 시간은 필수입니다");
         }
 
         this.id = id;
@@ -101,203 +70,17 @@ public class Delivery extends AggregateRoot {
         this.agentId = agentId;
         this.deliveryFee = deliveryFee;
         this.status = status;
-        this.safePhoneNumber = safePhoneNumber;
-        this.policy = policy;
-        this.createdAt = createdAt;
-        this.updatedAt = updatedAt;
-        this.deliveryTypeCode = deliveryTypeCode;
-        this.routing = routing;
-        this.prevStep = prevStep;
-        this.currentStep = currentStep;
-        this.nextStep = nextStep;
     }
 
-    /**
-     * 배송 생성 팩토리 메서드
-     *
-     * <p>배송을 생성하고 초기 상태 이력을 기록합니다.
-     */
-    public static Delivery create(
-        Long id,
-        DeliveryNumber deliveryNumber,
-        Long orderId,
-        Long dispatchId,
-        Long agentId,
-        BigDecimal deliveryFee,
-        DeliverySafePhoneNumber safePhoneNumber,
-        DeliveryPolicy policy,
-        DeliveryRouting routing
-    ) {
-        Instant now = Instant.now();
-        
-        Delivery delivery = new Delivery(
-            id,
-            deliveryNumber,
-            orderId,
-            dispatchId,
-            agentId,
-            deliveryFee,
-            DeliveryStatus.STARTED,
-            safePhoneNumber,
-            policy,
-            now,
-            now,
-            routing.getDeliveryTypeCode(),
-            routing,
-            null, // prevStep
-            null, // currentStep
-            null  // nextStep
-        );
-
-        // 도메인 이벤트 추가
-        delivery.addDomainEvent(DeliveryCreatedEvent.from(delivery));
-
-        return delivery;
-    }
-
-    /**
-     * 상점 도착
-     */
     public void arrive() {
-        if (status != DeliveryStatus.STARTED) {
-            throw new IllegalStateException("배송 시작 상태에서만 상점 도착이 가능합니다");
-        }
-
-        changeStatus(DeliveryStatus.ARRIVED, "상점 도착");
+        this.status = DeliveryStatus.PICKUP_ARRIVED;
     }
 
-    /**
-     * 픽업 완료
-     */
     public void pickup() {
-        if (status != DeliveryStatus.ARRIVED) {
-            throw new IllegalStateException("상점 도착 상태에서만 픽업이 가능합니다");
-        }
-
-        changeStatus(DeliveryStatus.PICKED_UP, "픽업 완료");
+        this.status = DeliveryStatus.PICKED_UP;
     }
 
-    /**
-     * 배송 완료
-     */
-    public void complete() {
-        if (status != DeliveryStatus.PICKED_UP) {
-            throw new IllegalStateException("픽업 완료 상태에서만 배송 완료가 가능합니다");
-        }
-
-        changeStatus(DeliveryStatus.COMPLETED, "배송 완료");
-    }
-
-    /**
-     * 배송 취소
-     */
-    public void cancel(String reason) {
-        if (status == DeliveryStatus.PICKED_UP || status == DeliveryStatus.COMPLETED) {
-            throw new IllegalStateException("픽업 완료 후에는 취소할 수 없습니다");
-        }
-
-        changeStatus(DeliveryStatus.CANCELLED, "배송 취소: " + reason);
-    }
-
-
-    /**
-     * 상태 변경
-     */
-    private void changeStatus(DeliveryStatus newStatus, String reason) {
-        if (this.status == newStatus) {
-            return;
-        }
-
-        this.status = newStatus;
-        
-        // 도메인 이벤트 추가
-        addDomainEvent(DeliveryStatusChangedEvent.from(this, newStatus, reason));
-    }
-
-    /**
-     * 취소 가능 여부 확인
-     */
-    public boolean isCancellable() {
-        return status == DeliveryStatus.STARTED || status == DeliveryStatus.ARRIVED;
-    }
-    
-    /**
-     * 상태 설정 (내부용)
-     */
-    public void setStatus(DeliveryStatus status) {
-        this.status = status;
-    }
-    
-    /**
-     * 라우팅 조회
-     */
-    public DeliveryRouting getRouting() {
-        return routing;
-    }
-    
-    /**
-     * 이전 단계 조회
-     */
-    public DeliveryStep getPrevStep() {
-        return prevStep;
-    }
-    
-    /**
-     * 현재 단계 조회
-     */
-    public DeliveryStep getCurrentStep() {
-        return currentStep;
-    }
-    
-    /**
-     * 다음 단계 조회
-     */
-    public DeliveryStep getNextStep() {
-        return nextStep;
-    }
-    
-    /**
-     * 다음 단계로 이동
-     */
-    public void moveToNextStep() {
-        if (nextStep != null) {
-            nextStep.validate(this, routing);
-            nextStep.execute(this, routing);
-            this.prevStep = currentStep;
-            this.currentStep = nextStep;
-            this.nextStep = currentStep.getNextStep(routing);
-        }
-    }
-    
-    /**
-     * 다음 단계로 이동 가능한지 확인
-     */
-    public boolean canMoveToNext() {
-        return nextStep != null && nextStep.canTransition(this, routing);
-    }
-    
-    /**
-     * 이전 단계로 되돌리기
-     */
-    public void moveToPrevStep() {
-        if (prevStep != null) {
-            this.nextStep = currentStep;
-            this.currentStep = prevStep;
-            this.prevStep = routing.getPreviousStep(prevStep);
-        }
-    }
-    
-    /**
-     * 이전 단계로 되돌리기 가능한지 확인
-     */
-    public boolean canMoveToPrev() {
-        return prevStep != null;
-    }
-    
-    /**
-     * 사진 필수 여부 확인
-     */
-    public boolean isPhotoRequired() {
-        return "PHOTO_REQUIRED".equals(deliveryTypeCode);
+    public void deliver() {
+        this.status = DeliveryStatus.CANCELLED;
     }
 }

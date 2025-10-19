@@ -38,21 +38,4 @@ public class DeliveryPhoto {
         this.photoUrl = photoUrl;
         this.uploadedAt = uploadedAt;
     }
-
-    /**
-     * 배송 사진 생성
-     */
-    public static DeliveryPhoto create(
-        Long deliveryId,
-        String photoUrl,
-        Instant uploadedAt
-    ) {
-        return new DeliveryPhoto(
-            null, // ID는 저장 시 할당
-            deliveryId,
-            photoUrl,
-            uploadedAt
-        );
-    }
-
 }

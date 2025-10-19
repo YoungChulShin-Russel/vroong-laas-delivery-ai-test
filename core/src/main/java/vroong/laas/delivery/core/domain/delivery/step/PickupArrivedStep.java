@@ -5,12 +5,12 @@ import vroong.laas.delivery.core.domain.delivery.DeliveryStatus;
 import vroong.laas.delivery.core.domain.delivery.DeliveryRouting;
 
 /**
- * 픽업 완료 단계
+ * 상점 도착 단계
  */
-public class PickedUpStep extends DeliveryStep {
+public class PickupArrivedStep extends DeliveryStep {
     
-    public PickedUpStep() {
-        super(DeliveryStatus.PICKED_UP);
+    public PickupArrivedStep() {
+        super(DeliveryStatus.PICKUP_ARRIVED);
     }
 
     @Override
@@ -20,7 +20,10 @@ public class PickedUpStep extends DeliveryStep {
 
     @Override
     protected void executeInternal(Delivery delivery, DeliveryRouting routing) {
-        delivery.pickup();
+        // 상점 도착 로직
+        delivery.arrive();
+
+        // 위치 정보 업데이트 등
     }
 
     @Override

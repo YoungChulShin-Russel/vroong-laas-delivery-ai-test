@@ -1,4 +1,4 @@
-package vroong.laas.delivery.core.domain.delivery.routing;
+package vroong.laas.delivery.core.domain.delivery;
 
 import vroong.laas.delivery.core.domain.delivery.step.DeliveryStep;
 
